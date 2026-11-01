@@ -1,0 +1,74 @@
+WING INPUT WATCH 2.0 — READ-ONLY NETWORK POLICY
+==============================================
+
+A telemetry client must request reports. This program is read-only toward mixer
+settings; it is not a passive packet sniffer. Creating/renewing a temporary meter
+subscription is its only console-side telemetry state change.
+
+There are exactly three network send sites in the runtime source wing_core.py:
+
+1. send_discovery:
+   UDP payload is the constant five bytes WING? to the user-entered IPv4, 2222.
+   No broadcast discovery or other destination is used.
+
+2. send_meter_only:
+   The only TCP write point. It rejects payloads unless they exactly match one
+   of four allowed byte strings for the app's current local receive port:
+     input meter subscription, input report renewal,
+     output meter subscription, output report renewal.
+   Every frame explicitly selects native channel 3. Literal escape bytes are
+   encoded so data cannot switch into a control/audio-engine protocol channel.
+   Input collection: channels 1–40 and AUX 1–8, legacy eight-word meter format.
+   Output collection: buses 1–16, mains 1–4, matrices 1–8, same format.
+   Only inputs are requested unless Include outputs was enabled locally.
+   Subscription: client receive port + report ID + fixed type/index collection.
+   Renewal: fixed report ID only. No property hashes or property values.
+
+3. send_name_read:
+   UDP port 2223. name_query validates the address against the fixed allowlist:
+     /ch/1/$name ... /ch/40/$name
+     /aux/1/$name ... /aux/8/$name
+     /bus/1/$name ... /bus/16/$name
+     /main/1/$name ... /main/4/$name
+     /mtx/1/$name ... /mtx/8/$name
+   The query contains ONLY the null-padded address. No OSC type tags, argument
+   values, bundles, assignments, traversal expressions or arbitrary paths.
+   $name is the protocol's read-only display-name field, not the writable name.
+   No fallback query to writable name fields exists. If replies are blocked or
+   unsupported, numbered labels or local aliases remain available.
+
+No generic mixer-control library is imported. No runtime UI accepts arbitrary
+protocol messages, URLs, property paths, node hashes or command strings.
+No commands exist to change gain, faders, mutes, phantom power, routing, scenes,
+RTA selection, clocking, lock state, metering settings or other console settings.
+No snapshots are loaded or recalled; no schema-discovery tool is run.
+
+Acknowledgment, aliases, thresholds, filters, channel enable/disable, graphs,
+alert sounds and report exports are entirely local Windows-app functions.
+Reconnect repeats only the same allowed handshake, meter and name requests.
+The app does not create or change firewall rules or console lock settings.
+
+Tests verify the exact input/output collections, escaping for all 65,535 receive
+ports, rejection of modified/control payloads, name paths without OSC arguments,
+and an AST check that runtime source has only the three guarded network sends.
+Simulated network tests capture real outgoing TCP/UDP messages and compare them
+with the allowlist. They also verify that disabled name/output options do not
+send their requests. The optional GUI test covers local configuration and alerts.
+
+This restriction describes the supplied source as written. Python code can be
+modified by someone with access to it; this is not an immutable security boundary
+against a person editing the program. The WING's own TCP Remote Lock can provide
+an additional device-enforced restriction, subject to your firmware/workflow.
+It is never changed by this app. Name queries remain read-only even without a
+remote lock because they contain no values and target only read-only leaves.
+
+Protocol references:
+Patrick-Gilles Maillot, WING Remote Protocols v3.0.5-1:
+  pp.18–19: address-only OSC reads vs typed-value writes
+  channel/aux/bus/main/matrix tables: $name read-only display-name fields
+  pp.82–87: framing, channel 3 meter subscriptions, signed 1/256 dB values
+  https://sites.google.com/site/patrickmaillot/wing
+libwing implementation cross-check (not bundled or imported):
+  https://github.com/dannyfiresnake/libwing
+TCP Remote Lock behavior:
+  https://mixingstation.app/ms-docs/mixers/behringer/wing/
